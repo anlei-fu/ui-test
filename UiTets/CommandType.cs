@@ -1,0 +1,31 @@
+﻿namespace UiTest
+{
+    public enum CommandType
+    {
+        CLICK,
+        DOUBEL_CLICK,
+        PRINT,
+        WAIT,
+        SCROLL_UP,
+        SCROLL_DOWN,
+        TYPE,
+        KEY_DOWN,
+        KEY_UP,
+        MOUSE_DOWN,
+        MOUSE_UP,
+        LEFT_MOUSE_DOWN,
+        LEFT_MOUSE_UP,
+        MIDDLE_MOUSE_DOWN,
+        MIDDLE_MOUSE_UP,
+        RIGHT_MOUSE_DOWN,
+        RIGHT_MOUSE_UP,
+        MOVE,
+        INFO,
+        SNAPSHOT,
+        PAUSE,
+        RESUME,
+        START,
+        STOP,
+        RESTART
+    }
+}

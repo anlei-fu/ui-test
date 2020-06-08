@@ -1,14 +1,16 @@
 ﻿using System;
+using System.Drawing;
+using System.Windows.Forms;
 
-namespace UiTets
+namespace UiTest
 {
     public  class EventCapture
     {
-        private bool _capturing = false;
-
         private MouseEventHook _mouseHook;
 
         private KeyboardEventHook _keyboardHook;
+
+        private KeyStatusManager _keyStatusManager = new KeyStatusManager();
 
         public EventCapture()
         {
@@ -18,102 +20,89 @@ namespace UiTets
             Init();
         }
 
-        public event Action<EventRecord> OnRecord;
+        /// <summary>
+        /// LControl + Alt + P
+        /// </summary>
+        public event Action Pause;
 
-        public bool IsCapturing => _capturing;
+        /// <summary>
+        /// LControl + Alt +  R
+        /// </summary>
+        public event Action Resume;
+
+        /// <summary>
+        /// LControl + Alt + S
+        /// </summary>
+        public event Action Stop;
+
+        /// <summary>
+        /// LControl + Alt + B
+        /// </summary>
+        public event Action Start;
+
+        /// <summary>
+        /// LControl + Alt + Q
+        /// </summary>
+        public event Action Restart;
+
+        /// <summary>
+        /// LControl + Alt + Mouse Left
+        /// </summary>
+        public event Action<System.Drawing.Point> Position;
+
+        public bool IsCapturing { get; private set; } = false;
 
         public void StartCapture()
         {
-            if (_capturing)
+            if (IsCapturing)
                 return;
 
             _mouseHook.Start();
             _keyboardHook.Start();
-            _capturing = true;
+            IsCapturing = true;
         }
 
         public void StopCapture()
         {
-            if (!_capturing)
+            if (!IsCapturing)
                 return;
 
             _mouseHook.Stop();
             _keyboardHook.Stop();
-            _capturing = false;
+            IsCapturing = false;
         }
 
         private void Init()
         {
             _keyboardHook.KeyDownEvent += (x, y) =>
             {
-                var record = new EventRecord()
-                {
-                    EventType = EventType.KeyDown,
-                    Key = y.KeyCode,
-                };
+                _keyStatusManager.SetKeyDown(y.KeyCode);
 
-                OnRecord?.Invoke(record);
+                if (y.KeyCode == Keys.S && _keyStatusManager.IsAllDown(Keys.LControlKey, Keys.LMenu))
+                    Stop?.Invoke();
+
+                if (y.KeyCode == Keys.B && _keyStatusManager.IsAllDown(Keys.LControlKey, Keys.LMenu))
+                    Start?.Invoke();
+
+                if (y.KeyCode == Keys.P && _keyStatusManager.IsAllDown(Keys.LControlKey, Keys.LMenu))
+                   Pause?.Invoke();
+
+                if (y.KeyCode == Keys.R && _keyStatusManager.IsAllDown(Keys.LControlKey, Keys.LMenu))
+                    Resume?.Invoke();
+
+                if (y.KeyCode == Keys.Q && _keyStatusManager.IsAllDown(Keys.LControlKey, Keys.LMenu))
+                    Restart?.Invoke();
             };
 
             _keyboardHook.KeyUpEvent += (x, y) =>
             {
-                var record = new EventRecord()
-                {
-                    EventType = EventType.KeyUp,
-                    Key = y.KeyCode,
-                };
-
-                OnRecord?.Invoke(record);
+                _keyStatusManager.SetKeyUp(y.KeyCode);
             };
 
             _mouseHook.MouseDownEvent += (x, y) =>
             {
-                var record = new EventRecord()
-                {
-                    Location = y.Location,
-                };
-
-                switch (y.Button)
-                {
-                    case System.Windows.Forms.MouseButtons.Left:
-                        record.EventType = EventType.MouseLeftDown;
-                        break;
-                    case System.Windows.Forms.MouseButtons.Right:
-                        record.EventType = EventType.MouseRightDown;
-                        break;
-                    case System.Windows.Forms.MouseButtons.Middle:
-                        record.EventType = EventType.MouseMiddleDown;
-                        break;
-                    default:
-                        return;
-                }
-
-                OnRecord?.Invoke(record);
-            };
-
-            _mouseHook.MouseUpEvent += (x, y) =>
-            {
-                var record = new EventRecord()
-                {
-                    Location = y.Location,
-                };
-
-                switch (y.Button)
-                {
-                    case System.Windows.Forms.MouseButtons.Left:
-                        record.EventType = EventType.MouseLeftUp;
-                        break;
-                    case System.Windows.Forms.MouseButtons.Right:
-                        record.EventType = EventType.MouseRightUp;
-                        break;
-                    case System.Windows.Forms.MouseButtons.Middle:
-                        record.EventType = EventType.MouseMiddleUp;
-                        break;
-                    default:
-                        return;
-                }
-
-                OnRecord?.Invoke(record);
+                if (y.Button == MouseButtons.Left && _keyStatusManager.IsAllDown(Keys.LControlKey,Keys.LMenu))
+                    Position?.Invoke(y.Location);
             };
         }
     }

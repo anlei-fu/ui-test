@@ -6,8 +6,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{4D3238E7-3E7A-42DC-BD79-C494CA87EA26}</ProjectGuid>
     <OutputType>WinExe</OutputType>
-    <RootNamespace>UiTets</RootNamespace>
-    <AssemblyName>UiTets</AssemblyName>
+    <RootNamespace>UiTest</RootNamespace>
+    <AssemblyName>UiTest</AssemblyName>
     <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -48,72 +48,40 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="EditForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="EditForm.Designer.cs">
-      <DependentUpon>EditForm.cs</DependentUpon>
-    </Compile>
+    <Compile Include="ClipBoardUtil.cs" />
+    <Compile Include="Command.cs" />
+    <Compile Include="Config.cs" />
+    <Compile Include="ControlExtensions.cs" />
     <Compile Include="EventCapture.cs" />
-    <Compile Include="EventRecord.cs" />
-    <Compile Include="EventRecorder.cs" />
-    <Compile Include="EventSender.cs" />
-    <Compile Include="EventType.cs" />
+    <Compile Include="EventEmitter.cs" />
+    <Compile Include="CommandType.cs" />
     <Compile Include="KeyBoardEventHook.cs" />
+    <Compile Include="KeyStatusManager.cs" />
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="MainForm.Designer.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="KeyExtensions.cs" />
     <Compile Include="KeyStatus.cs" />
     <Compile Include="MouseEventHook.cs" />
-    <Compile Include="NewProjectForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="NewProjectForm.Designer.cs">
-      <DependentUpon>NewProjectForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="NewTestForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="NewTestForm.Designer.cs">
-      <DependentUpon>NewTestForm.cs</DependentUpon>
-    </Compile>
+    <Compile Include="MutipleResultSaver.cs" />
+    <Compile Include="Point.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Project.cs" />
-    <Compile Include="ProjectManager.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="RenameForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="RenameForm.Designer.cs">
-      <DependentUpon>RenameForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="RichTextBoxRender.cs" />
-    <Compile Include="Serializer.cs" />
-    <Compile Include="Test.cs" />
+    <Compile Include="Result.cs" />
+    <Compile Include="ResultSaver.cs" />
+    <Compile Include="RichTextBoxConsole.cs" />
+    <Compile Include="SnapShoter.cs" />
     <Compile Include="TestRunner.cs" />
-    <Compile Include="ViewForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="ViewForm.Designer.cs">
-      <DependentUpon>ViewForm.cs</DependentUpon>
-    </Compile>
+    <Compile Include="Tree.cs" />
+    <Compile Include="TreeViewRender.cs" />
+    <Compile Include="VedioRecorder.cs" />
     <Compile Include="Win32Api.cs" />
     <Compile Include="WinformUtils.cs" />
-    <EmbeddedResource Include="EditForm.resx">
-      <DependentUpon>EditForm.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="MainForm.resx">
       <DependentUpon>MainForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="NewProjectForm.resx">
-      <DependentUpon>NewProjectForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="NewTestForm.resx">
-      <DependentUpon>NewTestForm.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
@@ -123,13 +91,8 @@
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
+      <DesignTime>True</DesignTime>
     </Compile>
-    <EmbeddedResource Include="RenameForm.resx">
-      <DependentUpon>RenameForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="ViewForm.resx">
-      <DependentUpon>ViewForm.cs</DependentUpon>
-    </EmbeddedResource>
     <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>

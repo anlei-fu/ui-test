@@ -1,93 +1,36 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 
-namespace UiTets
+namespace UiTest
 {
     public partial class MainForm : Form
     {
-        /// <summary>
-        /// Serialie event record
-        /// </summary>
-        private Serializer _serializer = new Serializer();
+        private const string CONFIG_FILE = "./config.json";
 
-        /// <summary>
-        /// Projects
-        /// </summary>
-        private List<Project> _projects=new List<Project>();
-
-        /// <summary>
-        /// Event capture
-        /// </summary>
         private EventCapture _eventCapture = new EventCapture();
 
-        /// <summary>
-        /// Test runner
-        /// </summary>
         private TestRunner _testRunner = new TestRunner();
 
-        /// <summary>
-        /// New project form
-        /// </summary>
-        private NewProjectForm _newProjectForm = new NewProjectForm();
+        private TreeViewRender _treeViewRender;
 
-        /// <summary>
-        /// New test form
-        /// </summary>
-        private NewTestForm _newTestForm = new NewTestForm();
+        private RichTextBoxConsole _mainConsole;
 
-        /// <summary>
-        /// Use to edit a project or a test
-        /// </summary>
-        private EditForm _editForm = new EditForm();
+        private RichTextBoxConsole _infoConsole;
 
-        /// <summary>
-        /// Use to view a project or a test
-        /// </summary>
-        private ViewTetsForm _viewForm = new ViewTetsForm();
+        private SnapShoter _snapShoter;
 
-        /// <summary>
-        /// Use to rename a project or a test
-        /// </summary>
-        private ReNameForm _renameForm = new ReNameForm();
+        private Queue<Project> _testQueue = new Queue<Project>();
 
-        /// <summary>
-        /// Is capturing
-        /// </summary>
-        private bool _isCapturing => _eventCapture.IsCapturing;
+        private ResultSaver _resultSaver;
 
-        /// <summary>
-        /// Is running a test
-        /// </summary>
-        private bool _isRunning => _testRunner.IsRunning;
+        private MutipleResultSaver _mutipleResultSaver;
 
-        /// <summary>
-        /// Record current project tree node
-        /// </summary>
-        private TreeNode _currentProjectNode;
+        private Config config;
 
-        /// <summary>
-        /// Record current test tree node
-        /// </summary>
-        private TreeNode _currentTestNode;
-
-        /// <summary>
-        ///  Render record in code box
-        /// </summary>
-        private RichTextBoxRender _richTextBoxRender;
-
-        /// <summary>
-        /// Use to record keystatus
-        /// </summary>
-        private EventRecorder _eventRecorder=new EventRecorder();
-
-        /// <summary>
-        /// Use to mark is recording
-        /// </summary>
-        private bool _isRecording;
-
+        private bool _isMutipleTest;
 
         /// <summary>
         /// Constructor
@@ -95,441 +38,481 @@ namespace UiTets
         public MainForm()
         {
             InitializeComponent();
-
             Init();
+
         }
 
         /// <summary>
-        /// Do initialize
+        /// Initialize all components and bind events handler
         /// </summary>
         private void Init()
         {
-            Directory.CreateDirectory("./output");
+            // read and init config
+            LoadConfig();
 
-            // load projects
-            if (File.Exists("./output/all.project"))
+            treeView1.AfterSelect += (x, y) =>
             {
-                var projectFile = File.ReadAllText("./output/all.project");
-                _projects = Newtonsoft.Json.JsonConvert.DeserializeObject<List<Project>>(projectFile);
+                var project = y.Node.Tag as Project;
+                SetTestInfo(project);
+            };
 
-                // build tree
-                foreach (var project in _projects)
-                {
-                    var node = new TreeNode()
-                    {
-                        Text = project.Name,
-                        Tag = project,
-                    };
-
-                    foreach (var test in project.Tests)
-                    {
-                        var testNode = new TreeNode()
-                        {
-                            Text = test.Name,
-                            Tag = test,
-                        };
-                        node.Nodes.Add(testNode);
-                    }
-
-                    project_tree.Nodes.Add(node);
-                }
-            }
-
-            WinformUtils.SetLineHeight(code_box, 22);
-            _richTextBoxRender = new RichTextBoxRender(code_box);
-
-            _eventCapture.OnRecord += x =>
+            treeView1.AfterCheck += (x, y) =>
             {
+                var node = y.Node;
 
-                if (_currentTestNode != null&&_isRecording)
-                    AppendRecord(x);
-
-                _eventRecorder.AddEvent(x);
-
-                if (x.EventType == EventType.KeyDown)
+                if (node.Nodes.Count > 0)
                 {
-                    if (_eventRecorder.IsKeyDown(Keys.Control)
-                       && _eventRecorder.IsKeyDown(Keys.Shift)
-                       && _eventRecorder.IsKeyDown(Keys.S)
-                       && !_isRecording)
+                    foreach (var item in node.Nodes)
                     {
-                        _isRecording = true;
-                    }else if(_eventRecorder.IsKeyDown(Keys.LControlKey)
-                       && _eventRecorder.IsKeyDown(Keys.Shift)
-                       && _eventRecorder.IsKeyDown(Keys.E)
-                       && _isRecording)
-                    {
-                        _isRecording = false;
+                        var subNode = item as TreeNode;
+                        CheckMany(subNode, node.Checked);
                     }
                 }
             };
 
-            // callback biding 
-            _newTestForm.DoCreateTest = CreateNewTest;
-            _newProjectForm.DoCreateProject = CreateNewProject;
-            _editForm.DoEditProject = EditProject;
-            _editForm.DoEditTest = EditTest;
-            _renameForm.OnNewName =Rename;
+            // capture hotkey event and handle them
+            _eventCapture.Start += Start;
+            _eventCapture.Stop += Stop;
+            _eventCapture.Resume += Resume;
+            _eventCapture.Restart += Restart;
+            _eventCapture.Pause += Pause;
+            _eventCapture.Position += x =>
+            {
+                ClipBoardUtil.SetText($"{x.X},{x.Y}");
+            };
 
+            // init test runner dependencies and event callback handlers
+            _testRunner.Printer = Log;
+            _testRunner.SnapShoter = SnapShot;
+            _testRunner.SetClipBoard = SetClipBoard;
+            _testRunner.Infoer = Info;
+            _testRunner.SnapShoter = SnapShot;
+            _testRunner.Finished += TestFinished;
+
+            // init output consoles
+            _mainConsole = new RichTextBoxConsole(main_box);
+            _infoConsole = new RichTextBoxConsole(info_box);
+
+            // init treeview render
+            _treeViewRender = new TreeViewRender(treeView1);
+
+            // init snapshoter
+            _snapShoter = new SnapShoter(config.SnapshotDir);
+
+            // mount project
+            LoadProjects();
+
+            // begin capture hotkey event
             _eventCapture.StartCapture();
-
-            // size changed
-            splitContainer2.Panel1.SizeChanged += (x, y) =>
-            {
-                project_tree.Size = new Size(splitContainer2.Panel1.Width-10,splitContainer2.Height-project_tree.Location.Y);
-            };
-
-            splitContainer2.Panel2.SizeChanged += (x, y) =>
-            {
-                code_box.Size = new Size(splitContainer2.Panel2.Width - 45, splitContainer2.Panel2.Height - code_box.Location.Y);
-            };
+           
         }
 
-        /// <summary>
-        /// Render a test
-        /// </summary>
-        /// <param name="test"></param>
-        private void Render(Test test)
-        {
-            code_box.Clear();
-            code_box.Rtf = test.Rtf;
-        }
 
-        /// <summary>
-        /// Append new event record into code box
-        /// </summary>
-        /// <param name="record"></param>
-        private void AppendRecord(EventRecord record)
+        private void CheckMany(TreeNode node ,bool _checked)
         {
-            code_box.AppendText(_serializer.Serialize(record));
-        }
+            node.Checked = _checked;
 
-        /// <summary>
-        /// Create a new project, and add into project tree
-        /// </summary>
-        /// <param name="projectName"></param>
-        /// <param name="description"></param>
-        /// <returns></returns>
-        private bool CreateNewProject(string projectName,string description)
-        {
-            foreach (var item in _projects)
+            foreach (var item in node.Nodes)
             {
-                if (item.Name == projectName)
-                    return false;
+                var subNode = item as TreeNode;
+                CheckMany(subNode, _checked);
+            }
+        }
+
+        private void LoadConfig()
+        {
+            if (!File.Exists(CONFIG_FILE))
+            {
+                File.WriteAllText(CONFIG_FILE, "{}");
             }
 
-            var project = new Project()
+            // read config file
+            try
             {
-                Name = projectName,
-                Description=description,
-                Folder=$"./output/{projectName}",
-            };
-
-            _projects.Add(project);
-            Directory.CreateDirectory($"./output/{projectName}");
-
-            var node = new TreeNode()
+                config = Newtonsoft.Json.JsonConvert.DeserializeObject<Config>(File.ReadAllText(CONFIG_FILE));
+            }
+            catch(Exception ex)
             {
-                Text=projectName,
-                Tag=project
-            };
-
-            project_tree.Nodes.Add(node);
-
-            return true;
-        }
-
-        /// <summary>
-        /// Create a new test ,and add its' node into project tree
-        /// </summary>
-        /// <param name="testName"></param>
-        /// <param name="page"></param>
-        /// <param name="description"></param>
-        /// <returns></returns>
-        private bool CreateNewTest(string testName,string page,string description)
-        {
-            var project = _currentProjectNode.Tag as Project;
-
-            foreach (var item in project.Tests)
-            {
-                if (item.Name == testName)
-                    return false;
+                _infoConsole.Error($"incorrect config file\r\n{ex}");
+                config = new Config();
             }
 
-            var test = new Test()
+            // set default config if absent or incorrect path
+            if (config.WorkDir == null||!Directory.Exists(config.WorkDir))
             {
-                Name = testName,
-                Description = description,
-                Page = page,
-                Path=$"./output/{project.Name}/{testName}.rtf"
-            };
-
-            project.Tests.Add(test);
-
-            File.WriteAllText(test.Path, "");
-
-            var node = new TreeNode()
-            {
-                Tag = test,
-                Text = testName,
-            };
-
-            _currentProjectNode.Nodes.Add(node);
-
-            return true;
-        }
-
-        /// <summary>
-        /// Start to record event
-        /// </summary>
-        private void StartCapture()
-        {
-            if (_currentTestNode == null)
-            {
-                MessageBox.Show("Select a test first!", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                Directory.CreateDirectory("./project");
+                config.WorkDir = "./project";
+                UpdateConfig(config);
             }
 
-            _eventCapture.StopCapture();
-        }
-
-        /// <summary>
-        /// Stop record event
-        /// </summary>
-        private void StopCapture()
-        {
-            _eventCapture.StartCapture();
-        }
-
-        /// <summary>
-        /// Delete a project and remove from project tree
-        /// </summary>
-        private void DeleteProject()
-        {
-            project_tree.Nodes.Remove(_currentProjectNode);
-            var project = _currentProjectNode.Tag as Project;
-            _projects.Remove(project);
-            _currentProjectNode = null;
-            Directory.Delete(project.Folder);
-        }
-
-        /// <summary>
-        /// Delete a test and remove from project tree
-        /// </summary>
-        private void DeleteTest()
-        {
-            _currentTestNode.Parent.Nodes.Remove(_currentTestNode);
-            var test = _currentTestNode.Tag as Test;
-            File.Delete(test.Path);
-            var project = _currentProjectNode.Tag as Project;
-            project.Tests.Remove(test);
-            code_box.Clear();
-        }
-
-        /// <summary>
-        /// Edit project properties
-        /// </summary>
-        /// <param name="name"></param>
-        /// <param name="description"></param>
-        private void EditProject(string name,string description)
-        {
-            _currentProjectNode.Text = name;
-            var project = _currentProjectNode.Tag as Project;
-            project.Name = name;
-            project.Description = description;
-        }
-
-        /// <summary>
-        /// Edit test properties
-        /// </summary>
-        /// <param name="name"></param>
-        /// <param name="page"></param>
-        /// <param name="description"></param>
-        private void EditTest(string name, string page, string description)
-        {
-            _currentTestNode.Text = name;
-            var test = _currentTestNode.Tag as Test;
-            test.Description = description;
-            test.Name = name;
-            test.Page = page;
-        }
-        /// <summary>
-        /// Rename project
-        /// </summary>
-        /// <param name="newName"></param>
-        private void Rename(string newName)
-        {
-            if(project_tree.SelectedNode.Tag is Test test)
+            if (config.SnapshotDir == null||!Directory.Exists(config.SnapshotDir))
             {
-                test.Name = newName;
-                _currentTestNode.Text = newName;
+                Directory.CreateDirectory("./snapshot");
+                config.SnapshotDir = "./snapshot";
+                UpdateConfig(config);
             }
-            else
+
+            if (config.OutputDir == null||!Directory.Exists(config.OutputDir))
             {
-                var project = _currentProjectNode.Tag as Project;
-                project.Name = newName;
-                _currentProjectNode.Text = newName;
+                Directory.CreateDirectory("./output");
+                config.OutputDir = "./output";
+                UpdateConfig(config);
             }
+        }
+
+        /// <summary>
+        /// Update config
+        /// </summary>
+        /// <param name="config"></param>
+        private void UpdateConfig(Config config)
+        {
+            File.WriteAllText(CONFIG_FILE, Newtonsoft.Json.JsonConvert.SerializeObject(config));
+        }
+
+        /// <summary>
+        ///  Run test
+        /// </summary>
+        private void Start()
+        {
+            Trace.Write("begin");
+            if (_testRunner.IsRunning)
+            {
+                _infoConsole.Warning("Test still running ,stop it and retry");
+            }
+
+            _testQueue.Clear();
+
+            var tests = GetTests();
+            foreach (var item in tests)
+            {
+                _testQueue.Enqueue(item);
+            }
+
+            _isMutipleTest = _testQueue.Count > 1;
+
+            Run();
+
+        }
+
+        /// <summary>
+        /// Test runner finished callback
+        /// </summary>
+        /// <param name="project"></param>
+        private void TestFinished(string project)
+        {
+            //_infoConsole.Info($"{project} test finished");
+            //var file = _resultSaver.Generate();
+
+            //if (_isMutipleTest)
+            //{
+            //    _mutipleResultSaver.Add(project, file);
+            //    if (_testQueue.Count == 0)
+            //        ShowResult(_mutipleResultSaver.Generate());
+            //}
+            //else
+            //{
+            //    ShowResult(file);
+            //}
+
+            //_resultSaver.Clear();
+
         }
 
         /// <summary>
         /// Run test
         /// </summary>
-        private void Test()
+        private void Run()
         {
+            if (_testQueue.Count > 0)
+            {
+                _mainConsole.Clear();
+
+                var project = _testQueue.Dequeue();
+                SetTestInfo(project);
+                ChangeTest(project.Path);
+                _mainConsole.Info($"{project.Name} test started");
+                _testRunner.Run(project);
+            }
+        }
+
+        /// <summary>
+        /// Update test info on ui
+        /// </summary>
+        /// <param name="project"></param>
+        private void SetTestInfo(Project project)
+        {
+            lb_test_title.Text = project.Name;
+            lb_test_description.Text = project.Description??"";
 
         }
 
         /// <summary>
-        /// Stop test
+        /// Stop test, menu click or hotkey callback
         /// </summary>
-        private void StopTest()
+        private void Stop()
         {
-
+            if (_testRunner.IsRunning)
+            {
+                _testRunner.Stop();
+                _mainConsole.Info($"test finished");
+            }
         }
 
         /// <summary>
-        /// Output some into output-box
+        /// Resume test, menu click or hotkey callback
         /// </summary>
+        private void Resume()
+        {
+            if (_testRunner.IsRunning)
+            {
+                _testRunner.Resume();
+                _mainConsole.Info($"test resumed");
+            }
+        }
+
+        /// <summary>
+        /// Pause test ,menu click , hotkey callback
+        /// </summary>
+        private void Pause()
+        {
+            if (_testRunner.IsRunning)
+            {
+                _testRunner.Pause();
+                _mainConsole.Info($"test paused");
+            }
+        }
+
+        /// <summary>
+        /// Restart test, menu click , hotkey callback
+        /// </summary>
+        private void Restart()
+        {
+            _infoConsole.Info("restarting ");
+            Stop();
+            Start();
+            _infoConsole.Info("restarted ");
+        }
+
+        /// <summary>
+        /// Reload project
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void Menu_OpenClick(object sender, System.EventArgs e)
+        {
+            if (_testRunner.IsRunning)
+            {
+                _infoConsole.Warning("test is still running,stop it and retry");
+                return;
+            }
+
+            FolderBrowserDialog dl = new FolderBrowserDialog();
+            if (dl.ShowDialog() == DialogResult.OK)
+            {
+                UpdateWorkDir(dl.SelectedPath);
+                ReloadProject();
+            }
+        }
+
+        private void ReloadProject()
+        {
+            _infoConsole.Info("reloading project");
+            _treeViewRender.Clear();
+            LoadProjects();
+            _infoConsole.Info("reloaded");
+        }
+
+        /// <summary>
+        /// Update workdir
+        /// </summary>
+        /// <param name="dir"></param>
+        private void UpdateWorkDir(string dir)
+        {
+            config.WorkDir = dir;
+            UpdateConfig(config);
+        }
+
+        /// <summary>
+        /// Test runner log event handler
+        /// </summary>
+        /// <param name="msg"></param>
         private void Log(string msg)
         {
-            output_box.Text += msg + "\r\n";
+             _mainConsole.Log(msg);
         }
 
         /// <summary>
-        /// Do something when app close
+        /// Test runner info event handler
         /// </summary>
-        private void CloseCore()
+        /// <param name="msg"></param>
+        private void Info(string msg)
         {
+          _mainConsole.Info(msg);
+        }
+
+        /// <summary>
+        /// Test runner clipboard event handler
+        /// </summary>
+        /// <param name="msg"></param>
+        private void SetClipBoard(string msg)
+        {
+            this.InvokeAfterHandleCreated(() => ClipBoardUtil.SetText(msg));
 
         }
 
         /// <summary>
-        /// Menu new project callback
+        /// Test runner snapshot event handler
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Menu_NewProject(object sender, System.EventArgs e)
+        /// <param name="description"></param>
+        private void SnapShot(string description)
         {
-            _newProjectForm.ShowDialog();
+            var file = _snapShoter.SnapShot();
+            Info($"snapshot {description}\r\n save to file {file} ");
+          //  _resultSaver.Add(file, description);
         }
 
         /// <summary>
-        /// Menu save callback
+        /// Update treeview selected node when test item changed,
+        /// project path is the key of treenode
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Menu_Save(object sender, System.EventArgs e)
+        /// <param name="path"></param>
+        private void ChangeTest(string path)
         {
-            
+            treeView1.SelectedImageKey = path;
         }
 
         /// <summary>
-        /// Menu rename callback
+        /// Read all project file and render treeview
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Menu_Rename(object sender, System.EventArgs e)
+        private void LoadProjects()
         {
-            _renameForm.ShowDialog();
+            var workDir = config.WorkDir;
+
+            var project = new Project();
+            project.SubProjects = new List<Project>();
+            project.Path = workDir;
+            LoadProjectCore(workDir, project);
+            _treeViewRender.Render(ConvertToTree(project));
         }
 
         /// <summary>
-        /// Menu view callback
+        /// Recursively load project file
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Menu_View(object sender, System.EventArgs e)
+        /// <param name="dir"></param>
+        /// <param name="project"></param>
+        private void LoadProjectCore(string dir, Project project)
         {
-            if (project_tree.SelectedNode.Tag is Test test)
+            if (!Directory.Exists(dir))
             {
-                _viewForm.ViewTest(test.Name, test.Page, test.Description);
+                return;
             }
-            else
+
+            var folder = new DirectoryInfo(dir);
+
+            foreach (var file in folder.GetFiles())
             {
-                var project = project_tree.SelectedNode.Tag as Project;
-                _viewForm.ViewProject(project.Name, project.Description);
+                LoadSubProject(file.FullName, project);
+            }
+
+            foreach (var item in folder.GetDirectories())
+            {
+                var subProject = new Project();
+                subProject.Path = item.FullName;
+                subProject.Name = item.Name;
+                subProject.SubProjects = new List<Project>();
+                project.SubProjects.Add(subProject);
+                LoadProjectCore(item.FullName, subProject);
+            }
+
+        }
+
+        /// <summary>
+        /// Load subProject
+        /// </summary>
+        /// <param name="file"></param>
+        /// <param name="project"></param>
+        private void LoadSubProject(string file, Project project)
+        {
+            try
+            {
+                var subProject = Newtonsoft.Json.JsonConvert.DeserializeObject<Project>(File.ReadAllText(file));
+                subProject.Path = file;
+                project.SubProjects.Add(subProject);
+            }
+            catch (Exception ex)
+            {
+                _infoConsole.Error($"load file {file} failed\r\n {ex}");
             }
         }
 
         /// <summary>
-        /// Menu edit callback
+        /// Convert project to tree model
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Menu_Edit(object sender, System.EventArgs e)
+        /// <param name="project"></param>
+        /// <returns></returns>
+        private Tree ConvertToTree(Project project)
         {
-            if (project_tree.SelectedNode.Tag is Test test)
-            {
-                _editForm.EditTest(test.Name, test.Page, test.Description);
-            }
-            else
-            {
-                var project = project_tree.SelectedNode.Tag as Project;
-                _editForm.EditProject(project.Name, project.Description);
-            }
+            var tree = new Tree();
+            ConvertToTreeCore(tree, project);
+            return tree;
         }
 
         /// <summary>
-        /// Menu delete callback
+        /// Recursively convert
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Menu_Delete(object sender, System.EventArgs e)
+        /// <param name="tree"></param>
+        /// <param name="project"></param>
+        private void ConvertToTreeCore(Tree tree, Project project)
         {
-            if(project_tree.SelectedNode.Tag is Test)
+            tree.Text = project.Name;
+            tree.Data = project;
+            tree.Key = project.Path;
+            if (project.SubProjects != null)
             {
-                DeleteTest();
+                foreach (var item in project.SubProjects)
+                {
+                    var subTree = new Tree();
+                    ConvertToTreeCore(subTree, item);
+                    tree.Children.Add(subTree);
+                }
             }
-            else
-            {
-                DeleteProject();
-            }
+
         }
 
         /// <summary>
-        /// Menu new test callback
+        /// Get all tests which treenode is checked
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Menu_NewTest(object sender, System.EventArgs e)
+        /// <returns></returns>
+        private List<Project> GetTests()
         {
-            _newTestForm.ShowDialog();
-        }
-
-        private void splitContainer2_Panel2_Paint(object sender, PaintEventArgs e)
-        {
-
-        }
-
-        private void panel2_Paint(object sender, PaintEventArgs e)
-        {
-
-        }
-
-        private void project_tree_AfterSelect(object sender, TreeViewEventArgs e)
-        {
-            if (project_tree.SelectedNode.Tag is Test test)
+            List<TreeNode> nodes = _treeViewRender.GetCheckedNodes();
+            var projects = new List<Project>();
+            foreach (var item in nodes)
             {
-                if (test.Rtf == null)
-                    test.Rtf = File.ReadAllText(test.Path);
-
-                Render(test);
-                _currentTestNode = project_tree.SelectedNode;
-                context_menu.Items[0].Visible = false;
+                if (item.Tag != null)
+                {
+                    projects.Add(item.Tag as Project);
+                }
             }
-            else
-            {
-                _currentProjectNode = project_tree.SelectedNode;
-                context_menu.Items[0].Visible = true;
-            }
+
+            return projects;
         }
 
-        private void project_tree_BeforeSelect(object sender, TreeViewCancelEventArgs e)
+
+
+        /// <summary>
+        /// Open browser to display result of test which render with html
+        /// </summary>
+        /// <param name="file"></param>
+        private void ShowResult(string file)
         {
-            if (project_tree.SelectedNode != null && project_tree.SelectedNode.Tag is Test test)
+            try
             {
-                test.Rtf = code_box.Rtf;
+                Process.Start(file);
+            }
+            catch(Exception ex)
+            {
+                _infoConsole.Error($"open file '{file}' failed\r\n{ex}");
             }
         }
     }

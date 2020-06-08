@@ -2,7 +2,7 @@
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace UiTets
+namespace UiTest
 {
   public  class WinformUtils
     {

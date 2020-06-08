@@ -3,12 +3,12 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace UiTets
+namespace UiTest
 {
     public class MouseEventHook
     {
-        private Point point;
-        private Point Point
+        private System.Drawing.Point point;
+        private System.Drawing.Point Point
         {
             get { return point; }
             set
@@ -25,8 +25,6 @@ namespace UiTets
             }
         }
         private int hHook;
-        private static int hMouseHook = 0;
-        private const int WM_MOUSEMOVE = 0x200;
         private const int WM_LBUTTONDOWN = 0x201;
         private const int WM_RBUTTONDOWN = 0x204;
         private const int WM_MBUTTONDOWN = 0x207;
@@ -41,7 +39,7 @@ namespace UiTets
         public Win32Api.HookProc hProc;
         public MouseEventHook()
         {
-            this.Point = new Point();
+            this.Point = new System.Drawing.Point();
         }
         public int Start()
         {
@@ -98,7 +96,7 @@ namespace UiTets
                         break;
                 }
 
-                this.Point = new Point(MyMouseHookStruct.pt.x, MyMouseHookStruct.pt.y);
+                this.Point = new System.Drawing.Point(MyMouseHookStruct.pt.x, MyMouseHookStruct.pt.y);
                 return Win32Api.CallNextHookEx(hHook, nCode, wParam, lParam);
             }
         }
